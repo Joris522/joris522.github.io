@@ -1,0 +1,156 @@
+---
+title: "Predicting how well people do their exercises"
+author: "Joris Wever"
+date: "July 7, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  
+
+# Dataset
+The Weight Lifting Exercises monitored with Inertial Measurment Units Data set is a collected by six young health subjects that were asked to perform 5 variations of the biceps curl weight lifting exercise. One of the variations is the one predicted by the health professional. More information is available from the website here: https://archive.ics.uci.edu/ml/datasets/Weight+Lifting+Exercises+monitored+with+Inertial+Measurement+Units.
+
+The dependent variable with variations of the biceps curl weight lifting exercise is called classe, and contains the following classes:
++ exactly according to the specification (Class A)
++ throwing the elbows to the front (Class B)
++ lifting the dumbbell only halfway (Class C)
++ lowering the dumbbell only halfway (Class D)
++ throwing the hips to the front (Class E)
+
+Source: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. 
+
+# Settings
+I started with setting the environment, including the steps below.
+
+Empty enironment
+```{r, eval=T}
+rm(list=ls())
+```
+
+Install required packages and open libraries
+```{r, eval=T, warning=F, message=FALSE}
+packages = c("downloader", "dplyr", "corrplot", "caret", "rattle", "rpart", "randomForest")
+package.check <- lapply(packages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+```
+
+Create folder if does not exist
+```{r, eval=T}
+if (!file.exists("Coursera_PracticalMachineLearning_FinalAssignment")) { # check if directory exists
+  dir.create("Coursera_PracticalMachineLearning_FinalAssignment") # create a directory if it doesn't exist
+}
+```
+
+Set working directory
+```{r, eval=T}
+setwd("Coursera_PracticalMachineLearning_FinalAssignment")
+```
+
+# Getting and read the data
+Then, I loaded the dataset from the url's below.
+
+Download the training and test data
+```{r, eval=T}
+url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+destfile <- "WeightLiftingExercises_train.csv"
+destfile2 <- "WeightLiftingExercises_test.csv"
+download(url, dest= destfile, mode="wb") 
+download(url2, dest= destfile2, mode="wb")
+```
+
+List files
+```{r, eval=T}
+list.files()
+```
+
+Read train and test dataset
+```{r, eval=T}
+training <- read.csv(destfile, na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(destfile2,na.strings=c("NA","#DIV/0!",""))
+```
+
+Dimension training and testing data
+```{r, eval=T}
+dim(training); dim(testing)
+```
+
+# Pre processing
+
+The seed was set so that the random objects can be reproduced.
+```{r, eval=T}
+set.seed(12345)
+```
+
+Remove variables with too many NA values
+```{r, eval=T}
+NA.cols <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, NA.cols==FALSE]
+testing  <- testing[, NA.cols==FALSE]
+dim(training);dim(testing)
+```
+
+Identify covariates with very little variability and exclude them from the dataset
+```{r, eval=T}
+zeroCovariates <- nearZeroVar(training[sapply(training, is.numeric)], saveMetrics = TRUE)
+training <- training[,zeroCovariates[, 'nzv']==0]
+testing <- testing[,zeroCovariates[, 'nzv']==0]
+dim(training);dim(testing)
+```
+
+Remove unrelevant attributes
+```{r, eval=T}
+training <- training[-c(1,2,5,6)]
+testing <- testing[-c(1,2,5,6)]
+dim(training);dim(testing)
+```
+
+# Exploratory data analysis
+A correlation matrix was plotted on the remaining variables in order to get a feeling for the statistical relationships.
+```{r, eval=T}
+corMatrix <- cor(training[sapply(training, is.numeric)])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+# Analysis
+
+In order to predict the classe variable, a random forest model was applied. The model was chosen because it is often very accurate, and considered as a top performing algorithm for classification problems. I used 10-fold cross validation to determine the accuracy of the model.
+
+## Random forest
+Prediction model building
+```{r, eval=T}
+set.seed(12345)
+modFit <- train(classe ~ ., data = training, method = "rf", importance = TRUE, metric = "Accuracy", trControl = trainControl(method = "cv", number = 10, verboseIter = TRUE))
+plot(modFit)
+modFit
+```
+
+With this method, the random forest model was build using the mtry value corresponding with the largest accuracy. By tuning this parameter, underfitting and overfitting was mostly tackled. As the plot shows, the accuracy was at largest with 28 randomly selected predictors. So, this parameter was used to build the final model. This results in an accuracy of almost 1.
+
+## Out of sample error
+The out of sample error was calculated by doing 1 minus the accuracy 
+
+```{r, eval=T}
+1 - modFit$results[2,2]
+```
+
+## Prediction 20 test cases
+The model predicted the following values based on the testing dataset. 
+```{r, eval=T}
+prediction <- predict(modFit, testing)
+prediction
+```
+
+
+
+
